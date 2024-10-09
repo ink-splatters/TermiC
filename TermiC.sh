@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Copyright (C) 2022  Yusuf Kağan Hanoğlu
 # This program is free software: you can redistribute it and/or modify
@@ -38,47 +38,56 @@ helptxt="TermiC $versiontxt \nLicensed under GPLv3\
 [[ $1 == "cpp" ]] || [[ $0 =~ \+\+ ]] && lang="c++" && compiler="g++ -fpermissive" && extension="cpp" && addInclude="#include <iostream>\nusing namespace std;\n"
 [[ $1 == "cpp17" ]] || [[ $0 =~ \+\+ ]] && lang="c++" && compiler="g++ -fpermissive -std=c++17" && extension="cpp" && addInclude="#include <iostream>\nusing namespace std;\n"
 [[ $1 == "cpp20" ]] || [[ $0 =~ \+\+ ]] && lang="c++" && compiler="g++ -fpermissive -std=c++2a" && extension="cpp" && addInclude="#include <iostream>\nusing namespace std;\n"
-command -v bat > /dev/null 2>&1 && catcmd="bat -p -l $lang" || catcmd=cat
+command -v bat >/dev/null 2>&1 && catcmd="bat -p -l $lang" || catcmd=cat
 echo TermiC $versiontxt
 echo Language: $lang
 echo Compiler: $compiler
 echo Type \'help\' for additional information
-oldPWD=`pwd`
+oldPWD=$(pwd)
 cd /tmp
-sourceFile=`mktemp termic-XXXXXXXX.$extension`
-binaryFile=`basename $sourceFile .$extension`
+sourceFile=$(mktemp termic-XXXXXXXX.$extension)
+binaryFile=$(basename $sourceFile .$extension)
 cacheDir="${XDG_CACHE_HOME:-$HOME/.cache}/termic"
 [[ -d $cacheDir ]] || mkdir -p "$cacheDir"
 historyFile="$cacheDir/${extension}_history"
 history -r "$historyFile"
 # disable filename completion on tab
-bind -r "\C-i" 2> /dev/null
+bind -r "\C-i" 2>/dev/null
 fullPrompt=""
 inlineCounter=0
 promptPS1=">> "
 initSource="#include \"stdio.h\"\n#include \"stdlib.h\"\n${addInclude}int main() {"
-echo -e  $initSource > $sourceFile
+echo -e $initSource >$sourceFile
 
 trap "echo -e '\nKeyboardInterrupt'" SIGINT
-while true;do
+while true; do
 	[[ $inlineCounter -gt 0 ]] && promptPS1="   " || promptPS1=">> "
-	prompt=$(read -rep "$promptPS1"$(echo $(yes ... | head -n $inlineCounter) | sed 's/ //g') prompt || { [[ $inlineCounter -gt 0 ]] || prompt="exit"; } ; echo $prompt)
+	prompt=$(
+		read -rep "$promptPS1"$(echo $(yes ... | head -n $inlineCounter) | sed 's/ //g') prompt || { [[ $inlineCounter -gt 0 ]] || prompt="exit"; }
+		echo $prompt
+	)
 	[[ $prompt == "" ]] && continue
 	history -s "$prompt"
 	[[ $prompt == "exit" ]] && break
-	[[ $prompt == "clear" ]] && :> $sourceFile && :> $sourceFile.tmp && :> $binaryFile && fullPrompt="" && inlineCounter=0 && echo -e  $initSource > $sourceFile && continue
+	[[ $prompt == "clear" ]] && : >$sourceFile && : >$sourceFile.tmp && : >$binaryFile && fullPrompt="" && inlineCounter=0 && echo -e $initSource >$sourceFile && continue
 	[[ $prompt == "abort" ]] && fullPrompt="" && inlineCounter=0 && continue
 	[[ $prompt == "show" ]] && $catcmd $sourceFile && continue
-	[[ $prompt == "showtmp" ]] && { [[ -f $sourceFile.tmp ]] && $catcmd $sourceFile.tmp || echo "No .tmp file!"; continue; }
-	[[ $prompt == "save" ]] && cp $sourceFile $oldPWD && echo "}" >> $oldPWD/$sourceFile && echo "Source file saved to $oldPWD/$sourceFile" && continue
+	[[ $prompt == "showtmp" ]] && {
+		[[ -f $sourceFile.tmp ]] && $catcmd $sourceFile.tmp || echo "No .tmp file!"
+		continue
+	}
+	[[ $prompt == "save" ]] && cp $sourceFile $oldPWD && echo "}" >>$oldPWD/$sourceFile && echo "Source file saved to $oldPWD/$sourceFile" && continue
 	[[ $prompt == "savebin" ]] && cp $binaryFile $oldPWD && echo "Binary file saved to $oldPWD/$binaryFile" && continue
 	[[ $prompt == "help" ]] && echo -e "$helptxt" && continue
-	fullPrompt=`echo "$fullPrompt"; echo "$prompt"`
-	fullPrompt=`echo "$fullPrompt" | sed '/^[[:blank:]]*$/d'`
-	inlineOpen=`echo $fullPrompt | grep -o '{\|#ifdef' | wc -l`
-	inlineClose=`echo $fullPrompt | grep -o '}\|#endif' | wc -l`
-	inlineCounter=$((inlineOpen-inlineClose))
-	if [[ $inlineOpen -gt $inlineClose ]];then
+	fullPrompt=$(
+		echo "$fullPrompt"
+		echo "$prompt"
+	)
+	fullPrompt=$(echo "$fullPrompt" | sed '/^[[:blank:]]*$/d')
+	inlineOpen=$(echo $fullPrompt | grep -o '{\|#ifdef' | wc -l)
+	inlineClose=$(echo $fullPrompt | grep -o '}\|#endif' | wc -l)
+	inlineCounter=$((inlineOpen - inlineClose))
+	if [[ $inlineOpen -gt $inlineClose ]]; then
 		:
 	else
 		addOutsideMain=false
@@ -97,29 +106,29 @@ while true;do
 		# If if/else if/else/switch/while/do while/for/try/catch
 
 		[[ $fullPrompt =~ ^.?[[:blank:]]*(if|else if|else|switch|while|do|for|try|catch).*\{ ]] && addOutsideMain=false && addToBeginning=false && addSemicolon=""
-    [[ $fullPrompt == *";" ]] && addSemicolon=""
-		if $addToBeginning;then
-			echo "$fullPrompt"$addSemicolon > $sourceFile.tmp
-			echo "`cat $sourceFile`" >> $sourceFile.tmp
-		elif $addOutsideMain;then
-			fullPrompt=`printf "%s" "$fullPrompt" | sed -e 's/[&\\]/\\\&/g'`
-			fullPrompt=`echo $fullPrompt`
-			sed "/^int main() {/i$fullPrompt$addSemicolon" $sourceFile > $sourceFile.tmp
+		[[ $fullPrompt == *";" ]] && addSemicolon=""
+		if $addToBeginning; then
+			echo "$fullPrompt"$addSemicolon >$sourceFile.tmp
+			echo "$(cat $sourceFile)" >>$sourceFile.tmp
+		elif $addOutsideMain; then
+			fullPrompt=$(printf "%s" "$fullPrompt" | sed -e 's/[&\]/\\&/g')
+			fullPrompt=$(echo $fullPrompt)
+			sed "/^int main() {/i$fullPrompt$addSemicolon" $sourceFile >$sourceFile.tmp
 		else
 			cp $sourceFile $sourceFile.tmp
-			echo "$fullPrompt$addSemicolon" >> $sourceFile.tmp
+			echo "$fullPrompt$addSemicolon" >>$sourceFile.tmp
 		fi
 		fullPrompt=""
 		compiledSuccessfully=false
-		$compiler -w -x$lang <(echo "`cat $sourceFile.tmp`}") -o $binaryFile && compiledSuccessfully=true
+		$compiler -w -x$lang <(echo "$(cat $sourceFile.tmp)}") -o $binaryFile && compiledSuccessfully=true
 
-		if $compiledSuccessfully;then
-			retval=`./$binaryFile 2>&1`
+		if $compiledSuccessfully; then
+			retval=$(./$binaryFile 2>&1)
 			[[ $retval == "" ]] && mv $sourceFile.tmp $sourceFile || echo "$retval"
 		fi
 	fi
 done
 
 history -a "$historyFile"
-rm $sourceFile* &> /dev/null
-rm $binaryFile &> /dev/null
+rm $sourceFile* &>/dev/null
+rm $binaryFile &>/dev/null
